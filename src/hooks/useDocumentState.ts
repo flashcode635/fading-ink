@@ -1,27 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { DocumentState, TextBlock, DECAY_CONFIG } from '@/types/document';
+import { DocumentState, TextBlock, DocumentPage, DECAY_CONFIG } from '@/types/document';
 import { 
   generateId, 
   calculateDecayRate, 
-  createNewBlock, 
+  createNewBlock,
+  createNewPage,
   generateRandomBruise,
   generateRandomStain 
 } from '@/lib/decay';
 
-const STORAGE_KEY = 'aging-document-state';
+const STORAGE_KEY = 'aging-document-state-v2';
 
 function createInitialState(): DocumentState {
   const now = Date.now();
   return {
     id: generateId(),
     title: 'Untitled Document',
-    blocks: [createNewBlock(0, '')],
+    pages: [createNewPage(1)],
+    currentPageIndex: 0,
     totalEdits: 0,
     documentAge: 0,
     createdAt: now,
     globalDecayMultiplier: 1,
-    backgroundYellowing: 0,
-    bruises: [],
     lastSavedAt: now,
     hasSeenWelcome: false,
   };
@@ -45,8 +45,12 @@ function loadState(): DocumentState {
 export function useDocumentState() {
   const [state, setState] = useState<DocumentState>(loadState);
   const [criticalBlock, setCriticalBlock] = useState<TextBlock | null>(null);
+  const [isFlipping, setIsFlipping] = useState(false);
+  const [flipDirection, setFlipDirection] = useState<'left' | 'right'>('right');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const decayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const currentPage = state.pages[state.currentPageIndex];
 
   // Debounced save to localStorage
   const saveState = useCallback((newState: DocumentState) => {
@@ -64,51 +68,60 @@ export function useDocumentState() {
     decayIntervalRef.current = setInterval(() => {
       setState(prev => {
         const now = Date.now();
-        const decayRate = calculateDecayRate(prev.blocks.length);
         
-        const updatedBlocks = prev.blocks.map(block => {
-          if (block.isBeingRestored) return block;
+        const updatedPages = prev.pages.map(page => {
+          const totalBlocks = page.blocks.length;
+          const decayRate = calculateDecayRate(totalBlocks);
           
-          const timeSinceEdit = (now - block.lastEditedAt) / 1000;
-          const decayIncrement = decayRate * (DECAY_CONFIG.DECAY_INTERVAL / 1000) * 
-                                  (1 + timeSinceEdit / 60); // Accelerate with time
-          
-          let newDecayLevel = Math.min(
-            100, 
-            Math.max(block.permanentDecayFloor, block.decayLevel + decayIncrement)
-          );
+          const updatedBlocks = page.blocks.map(block => {
+            if (block.isBeingRestored) return block;
+            
+            const timeSinceEdit = (now - block.lastEditedAt) / 1000;
+            const decayIncrement = decayRate * (DECAY_CONFIG.DECAY_INTERVAL / 1000) * 
+                                    (1 + timeSinceEdit / 120); // Slower acceleration
+            
+            let newDecayLevel = Math.min(
+              100, 
+              Math.max(block.permanentDecayFloor, block.decayLevel + decayIncrement)
+            );
 
-          // Add random stains as decay increases
-          let newStains = [...block.ageStains];
-          if (newDecayLevel > 40 && Math.random() < 0.05) {
-            newStains.push(generateRandomStain(block.id));
+            // Add random stains as decay increases
+            let newStains = [...block.ageStains];
+            if (newDecayLevel > 50 && Math.random() < 0.03) {
+              newStains.push(generateRandomStain(block.id));
+            }
+
+            return {
+              ...block,
+              decayLevel: newDecayLevel,
+              ageStains: newStains,
+            };
+          });
+
+          // Check for critical blocks
+          const critical = updatedBlocks.find(
+            b => b.decayLevel >= DECAY_CONFIG.CRITICAL_THRESHOLD && 
+                 !b.isBeingRestored &&
+                 b.content.length > 0
+          );
+          if (critical && !criticalBlock) {
+            setCriticalBlock(critical);
           }
 
+          // Slowly increase background yellowing
+          const newYellowing = Math.min(100, page.backgroundYellowing + 0.015);
+
           return {
-            ...block,
-            decayLevel: newDecayLevel,
-            ageStains: newStains,
+            ...page,
+            blocks: updatedBlocks,
+            backgroundYellowing: newYellowing,
           };
         });
 
-        // Check for critical blocks (but don't interrupt if already restoring)
-        const critical = updatedBlocks.find(
-          b => b.decayLevel >= DECAY_CONFIG.CRITICAL_THRESHOLD && 
-               !b.isBeingRestored &&
-               b.content.length > 0
-        );
-        if (critical && !criticalBlock) {
-          setCriticalBlock(critical);
-        }
-
-        // Slowly increase background yellowing
-        const newYellowing = Math.min(100, prev.backgroundYellowing + 0.02);
-
         const newState = {
           ...prev,
-          blocks: updatedBlocks,
+          pages: updatedPages,
           documentAge: now - prev.createdAt,
-          backgroundYellowing: newYellowing,
         };
 
         saveState(newState);
@@ -128,41 +141,50 @@ export function useDocumentState() {
     setState(prev => {
       const now = Date.now();
       
-      const updatedBlocks = prev.blocks.map(block => {
-        if (block.id === blockId) {
-          // Reset decay on edited block
-          return {
-            ...block,
-            content,
-            originalContent: content || block.originalContent,
-            lastEditedAt: now,
-            decayLevel: Math.max(block.permanentDecayFloor, 0),
-          };
-        } else {
-          // Accelerate decay on other blocks
-          const decayBoost = DECAY_CONFIG.EDIT_ACCELERATION + Math.random() * 2;
-          return {
-            ...block,
-            decayLevel: Math.min(100, block.decayLevel + decayBoost),
-          };
-        }
-      });
+      const updatedPages = prev.pages.map((page, pageIndex) => {
+        const isCurrentPage = pageIndex === prev.currentPageIndex;
+        
+        const updatedBlocks = page.blocks.map(block => {
+          if (block.id === blockId) {
+            // Reset decay on edited block
+            return {
+              ...block,
+              content,
+              originalContent: content || block.originalContent,
+              lastEditedAt: now,
+              decayLevel: Math.max(block.permanentDecayFloor, 0),
+            };
+          } else if (isCurrentPage) {
+            // Accelerate decay on other blocks in current page
+            const decayBoost = DECAY_CONFIG.EDIT_ACCELERATION + Math.random() * 2;
+            return {
+              ...block,
+              decayLevel: Math.min(100, block.decayLevel + decayBoost),
+            };
+          }
+          return block;
+        });
 
-      // Add new bruises when editing
-      let newBruises = [...prev.bruises];
-      if (Math.random() < 0.3) {
-        newBruises.push(generateRandomBruise());
-        if (Math.random() < 0.3) {
+        // Add bruises when editing
+        let newBruises = [...page.bruises];
+        if (isCurrentPage && Math.random() < 0.2) {
           newBruises.push(generateRandomBruise());
         }
-      }
+
+        return {
+          ...page,
+          blocks: updatedBlocks,
+          bruises: newBruises,
+          backgroundYellowing: isCurrentPage 
+            ? Math.min(100, page.backgroundYellowing + DECAY_CONFIG.YELLOWING_INCREMENT)
+            : page.backgroundYellowing,
+        };
+      });
 
       const newState = {
         ...prev,
-        blocks: updatedBlocks,
+        pages: updatedPages,
         totalEdits: prev.totalEdits + 1,
-        backgroundYellowing: Math.min(100, prev.backgroundYellowing + DECAY_CONFIG.YELLOWING_INCREMENT),
-        bruises: newBruises,
       };
 
       saveState(newState);
@@ -170,14 +192,19 @@ export function useDocumentState() {
     });
   }, [saveState]);
 
-  // Add a new block
+  // Add a new block to current page
   const addBlock = useCallback(() => {
     setState(prev => {
-      const newBlock = createNewBlock(prev.blocks.length);
-      const newState = {
-        ...prev,
-        blocks: [...prev.blocks, newBlock],
+      const updatedPages = [...prev.pages];
+      const currentPage = updatedPages[prev.currentPageIndex];
+      const newBlock = createNewBlock(currentPage.blocks.length);
+      
+      updatedPages[prev.currentPageIndex] = {
+        ...currentPage,
+        blocks: [...currentPage.blocks, newBlock],
       };
+
+      const newState = { ...prev, pages: updatedPages };
       saveState(newState);
       return newState;
     });
@@ -186,14 +213,62 @@ export function useDocumentState() {
   // Delete a block
   const deleteBlock = useCallback((blockId: string) => {
     setState(prev => {
-      const newBlocks = prev.blocks
+      const updatedPages = [...prev.pages];
+      const currentPage = updatedPages[prev.currentPageIndex];
+      
+      const newBlocks = currentPage.blocks
         .filter(b => b.id !== blockId)
         .map((b, i) => ({ ...b, position: i }));
       
-      const newState = {
-        ...prev,
+      updatedPages[prev.currentPageIndex] = {
+        ...currentPage,
         blocks: newBlocks.length > 0 ? newBlocks : [createNewBlock(0)],
       };
+
+      const newState = { ...prev, pages: updatedPages };
+      saveState(newState);
+      return newState;
+    });
+  }, [saveState]);
+
+  // Add new page with flip animation
+  const addNewPage = useCallback(() => {
+    setFlipDirection('right');
+    setIsFlipping(true);
+    
+    setTimeout(() => {
+      setState(prev => {
+        const newPage = createNewPage(prev.pages.length + 1);
+        const newState = {
+          ...prev,
+          pages: [...prev.pages, newPage],
+          currentPageIndex: prev.pages.length,
+        };
+        saveState(newState);
+        return newState;
+      });
+      
+      setTimeout(() => setIsFlipping(false), 100);
+    }, 600);
+  }, [saveState]);
+
+  // Navigate to page with flip animation
+  const goToPage = useCallback((index: number) => {
+    if (index === state.currentPageIndex || index < 0 || index >= state.pages.length) return;
+    
+    setFlipDirection(index > state.currentPageIndex ? 'right' : 'left');
+    setIsFlipping(true);
+    
+    setTimeout(() => {
+      setState(prev => ({ ...prev, currentPageIndex: index }));
+      setTimeout(() => setIsFlipping(false), 100);
+    }, 600);
+  }, [state.currentPageIndex, state.pages.length]);
+
+  // Update title
+  const updateTitle = useCallback((title: string) => {
+    setState(prev => {
+      const newState = { ...prev, title };
       saveState(newState);
       return newState;
     });
@@ -202,23 +277,23 @@ export function useDocumentState() {
   // Handle restoration success
   const handleRestorationSuccess = useCallback((blockId: string) => {
     setState(prev => {
-      const updatedBlocks = prev.blocks.map(block => {
-        if (block.id === blockId) {
-          return {
-            ...block,
-            decayLevel: 0,
-            permanentDecayFloor: 0,
-            isBeingRestored: false,
-            lastEditedAt: Date.now(),
-          };
-        }
-        return block;
-      });
+      const updatedPages = prev.pages.map(page => ({
+        ...page,
+        blocks: page.blocks.map(block => {
+          if (block.id === blockId) {
+            return {
+              ...block,
+              decayLevel: 0,
+              permanentDecayFloor: 0,
+              isBeingRestored: false,
+              lastEditedAt: Date.now(),
+            };
+          }
+          return block;
+        }),
+      }));
 
-      const newState = {
-        ...prev,
-        blocks: updatedBlocks,
-      };
+      const newState = { ...prev, pages: updatedPages };
       saveState(newState);
       return newState;
     });
@@ -232,51 +307,57 @@ export function useDocumentState() {
                       Math.random() * (DECAY_CONFIG.FAILED_RESTORATION_PENALTY_MAX - 
                                         DECAY_CONFIG.FAILED_RESTORATION_PENALTY_MIN);
       
-      const updatedBlocks = prev.blocks.map(block => {
-        if (block.id === blockId) {
-          return {
-            ...block,
-            permanentDecayFloor: Math.min(50, block.permanentDecayFloor + penalty),
-            isBeingRestored: false,
-          };
-        }
-        return block;
-      });
+      const updatedPages = prev.pages.map(page => ({
+        ...page,
+        blocks: page.blocks.map(block => {
+          if (block.id === blockId) {
+            return {
+              ...block,
+              permanentDecayFloor: Math.min(50, block.permanentDecayFloor + penalty),
+              isBeingRestored: false,
+            };
+          }
+          return block;
+        }),
+      }));
 
-      const newState = {
-        ...prev,
-        blocks: updatedBlocks,
-      };
+      const newState = { ...prev, pages: updatedPages };
       saveState(newState);
       return newState;
     });
     setCriticalBlock(null);
   }, [saveState]);
 
-  // Start restoration (mark block as being restored)
+  // Start restoration
   const startRestoration = useCallback((blockId: string) => {
     setState(prev => {
-      const updatedBlocks = prev.blocks.map(block => {
-        if (block.id === blockId) {
-          return { ...block, isBeingRestored: true };
-        }
-        return block;
-      });
-      return { ...prev, blocks: updatedBlocks };
+      const updatedPages = prev.pages.map(page => ({
+        ...page,
+        blocks: page.blocks.map(block => {
+          if (block.id === blockId) {
+            return { ...block, isBeingRestored: true };
+          }
+          return block;
+        }),
+      }));
+      return { ...prev, pages: updatedPages };
     });
   }, []);
 
-  // Dismiss restoration without penalty (escape)
+  // Dismiss restoration
   const dismissRestoration = useCallback(() => {
     if (criticalBlock) {
       setState(prev => {
-        const updatedBlocks = prev.blocks.map(block => {
-          if (block.id === criticalBlock.id) {
-            return { ...block, isBeingRestored: false };
-          }
-          return block;
-        });
-        return { ...prev, blocks: updatedBlocks };
+        const updatedPages = prev.pages.map(page => ({
+          ...page,
+          blocks: page.blocks.map(block => {
+            if (block.id === criticalBlock.id) {
+              return { ...block, isBeingRestored: false };
+            }
+            return block;
+          }),
+        }));
+        return { ...prev, pages: updatedPages };
       });
     }
     setCriticalBlock(null);
@@ -300,22 +381,32 @@ export function useDocumentState() {
   }, []);
 
   // Calculate statistics
+  const allBlocks = state.pages.flatMap(p => p.blocks);
   const stats = {
-    totalSections: state.blocks.length,
-    averageDecay: state.blocks.reduce((sum, b) => sum + b.decayLevel, 0) / state.blocks.length,
-    criticalSections: state.blocks.filter(b => b.decayLevel >= DECAY_CONFIG.CRITICAL_THRESHOLD).length,
+    totalSections: allBlocks.length,
+    averageDecay: allBlocks.length > 0 
+      ? allBlocks.reduce((sum, b) => sum + b.decayLevel, 0) / allBlocks.length 
+      : 0,
+    criticalSections: allBlocks.filter(b => b.decayLevel >= DECAY_CONFIG.CRITICAL_THRESHOLD).length,
     documentAge: state.documentAge,
     totalEdits: state.totalEdits,
-    backgroundYellowing: state.backgroundYellowing,
+    totalPages: state.pages.length,
+    currentPage: state.currentPageIndex + 1,
   };
 
   return {
     state,
+    currentPage,
     stats,
     criticalBlock,
+    isFlipping,
+    flipDirection,
     editBlock,
     addBlock,
     deleteBlock,
+    addNewPage,
+    goToPage,
+    updateTitle,
     handleRestorationSuccess,
     handleRestorationFailure,
     startRestoration,

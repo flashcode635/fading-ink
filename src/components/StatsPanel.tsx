@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Percent, Clock, AlertTriangle, Edit3 } from 'lucide-react';
+import { FileText, Percent, Clock, AlertTriangle, Edit3, BookOpen } from 'lucide-react';
 import { formatAge } from '@/lib/decay';
 
 interface StatsPanelProps {
@@ -9,6 +9,8 @@ interface StatsPanelProps {
   criticalSections: number;
   documentAge: number;
   totalEdits: number;
+  totalPages: number;
+  currentPage: number;
 }
 
 export const StatsPanel = memo(function StatsPanel({
@@ -17,8 +19,15 @@ export const StatsPanel = memo(function StatsPanel({
   criticalSections,
   documentAge,
   totalEdits,
+  totalPages,
+  currentPage,
 }: StatsPanelProps) {
   const stats = [
+    {
+      icon: BookOpen,
+      label: 'Pages',
+      value: `${currentPage}/${totalPages}`,
+    },
     {
       icon: FileText,
       label: 'Sections',
@@ -52,13 +61,14 @@ export const StatsPanel = memo(function StatsPanel({
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="stats-panel flex flex-wrap items-center justify-center gap-4 md:gap-6 
-                 py-3 px-4 bg-card/50 border-b border-border"
+      className="stats-panel flex flex-wrap items-center justify-center gap-3 md:gap-5 
+                 py-3 px-4 bg-card/80 backdrop-blur-sm border-b border-border
+                 sticky top-0 z-40"
     >
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className={`flex items-center gap-2 ${
+          className={`flex items-center gap-1.5 ${
             stat.warning ? 'text-destructive' : 'text-muted-foreground'
           }`}
         >

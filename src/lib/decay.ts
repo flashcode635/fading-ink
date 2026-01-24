@@ -1,4 +1,4 @@
-import { CORRUPTION_MAP, DECAY_CONFIG, TextBlock, AgeStain, Bruise } from '@/types/document';
+import { CORRUPTION_MAP, DECAY_CONFIG, TextBlock, AgeStain, Bruise, DocumentPage } from '@/types/document';
 
 // Memoization cache for corruption results
 const corruptionCache = new Map<string, string>();
@@ -8,17 +8,17 @@ export function generateId(): string {
 }
 
 export function corruptText(text: string, decayLevel: number): string {
-  if (decayLevel < 10) return text;
+  if (decayLevel < 15) return text;
   
   const cacheKey = `${text}-${Math.floor(decayLevel / 5)}`; // Cache in 5% buckets
   if (corruptionCache.has(cacheKey)) {
     return corruptionCache.get(cacheKey)!;
   }
 
-  const corruptionProbability = Math.min(decayLevel / 100, 0.7);
+  const corruptionProbability = Math.min(decayLevel / 100, 0.6);
   
   const corrupted = text.split('').map(char => {
-    if (CORRUPTION_MAP[char] && Math.random() < corruptionProbability * 0.3) {
+    if (CORRUPTION_MAP[char] && Math.random() < corruptionProbability * 0.25) {
       const options = CORRUPTION_MAP[char];
       return options[Math.floor(Math.random() * options.length)];
     }
@@ -40,18 +40,21 @@ export function calculateDecayRate(totalBlocks: number): number {
 }
 
 export function calculateOpacity(decayLevel: number): number {
-  return Math.max(0.3, 1 - decayLevel * DECAY_CONFIG.MAX_OPACITY_REDUCTION);
+  // Never go below MIN_OPACITY (45%)
+  const reduction = decayLevel * DECAY_CONFIG.MAX_OPACITY_REDUCTION;
+  return Math.max(DECAY_CONFIG.MIN_OPACITY, 1 - reduction);
 }
 
 export function calculateBlur(decayLevel: number): number {
   if (decayLevel <= DECAY_CONFIG.BLUR_THRESHOLD) return 0;
-  return ((decayLevel - DECAY_CONFIG.BLUR_THRESHOLD) / DECAY_CONFIG.BLUR_DIVISOR) * 2;
+  const progress = (decayLevel - DECAY_CONFIG.BLUR_THRESHOLD) / (100 - DECAY_CONFIG.BLUR_THRESHOLD);
+  return progress * DECAY_CONFIG.BLUR_MAX;
 }
 
 export function calculateTextColor(decayLevel: number): string {
-  // Shift from ink-black to brownish faded
-  const lightness = 13 + (decayLevel * 0.25); // 13% to 38%
-  const saturation = 30 - (decayLevel * 0.15); // 30% to 15%
+  // Shift from ink-black to brownish faded, but keep readable
+  const lightness = 13 + (decayLevel * 0.2); // 13% to 33%
+  const saturation = 30 - (decayLevel * 0.1); // 30% to 20%
   return `hsl(36, ${saturation}%, ${lightness}%)`;
 }
 
@@ -62,7 +65,7 @@ export function generateRandomStain(blockId: string): AgeStain {
     x: Math.random() * 80 + 10, // 10-90%
     y: Math.random() * 80 + 10,
     size: Math.random() * 40 + 20, // 20-60px
-    opacity: Math.random() * 0.3 + 0.1, // 0.1-0.4
+    opacity: Math.random() * 0.25 + 0.08, // 0.08-0.33
     type: types[Math.floor(Math.random() * types.length)],
     rotation: Math.random() * 360,
   };
@@ -75,7 +78,7 @@ export function generateRandomBruise(): Bruise {
     y: Math.random() * 90 + 5,
     width: Math.random() * 60 + 30,
     height: Math.random() * 40 + 20,
-    opacity: Math.random() * 0.15 + 0.05,
+    opacity: Math.random() * 0.12 + 0.04,
     rotation: Math.random() * 180,
   };
 }
@@ -93,6 +96,17 @@ export function createNewBlock(position: number, content: string = ''): TextBloc
     ageStains: [],
     permanentDecayFloor: 0,
     isBeingRestored: false,
+  };
+}
+
+export function createNewPage(pageNumber: number): DocumentPage {
+  return {
+    id: generateId(),
+    pageNumber,
+    blocks: [createNewBlock(0)],
+    bruises: [],
+    backgroundYellowing: 0,
+    createdAt: Date.now(),
   };
 }
 
@@ -159,4 +173,32 @@ export function formatAge(ms: number): string {
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
   return `${seconds}s`;
+}
+
+export function exportDocumentToText(title: string, pages: DocumentPage[]): string {
+  let content = `${title}\n${'='.repeat(title.length)}\n\n`;
+  
+  pages.forEach((page, index) => {
+    content += `--- Page ${index + 1} ---\n\n`;
+    page.blocks.forEach(block => {
+      if (block.content.trim()) {
+        content += `${block.content}\n\n`;
+      }
+    });
+  });
+  
+  return content;
+}
+
+export function downloadDocument(title: string, pages: DocumentPage[]) {
+  const content = exportDocumentToText(title, pages);
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${title.replace(/[^a-z0-9]/gi, '_')}_aged_document.txt`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
