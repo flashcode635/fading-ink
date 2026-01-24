@@ -9,11 +9,17 @@ import { RestorationMiniGame } from '@/components/RestorationMiniGame';
 const Index = () => {
   const {
     state,
+    currentPage,
     stats,
     criticalBlock,
+    isFlipping,
+    flipDirection,
     editBlock,
     addBlock,
     deleteBlock,
+    addNewPage,
+    goToPage,
+    updateTitle,
     handleRestorationSuccess,
     handleRestorationFailure,
     startRestoration,
@@ -48,16 +54,27 @@ const Index = () => {
             criticalSections={stats.criticalSections}
             documentAge={stats.documentAge}
             totalEdits={stats.totalEdits}
+            totalPages={stats.totalPages}
+            currentPage={stats.currentPage}
           />
 
           {/* Editor Canvas */}
-          <main className="py-8 px-4">
+          <main className="py-6 px-4">
             <EditorCanvas
-              state={state}
+              title={state.title}
+              currentPage={currentPage}
+              pages={state.pages}
+              currentPageIndex={state.currentPageIndex}
+              isFlipping={isFlipping}
+              flipDirection={flipDirection}
               onEditBlock={editBlock}
               onAddBlock={addBlock}
               onDeleteBlock={deleteBlock}
+              onAddNewPage={addNewPage}
+              onGoToPage={goToPage}
+              onUpdateTitle={updateTitle}
               onReset={resetDocument}
+              createdAt={state.createdAt}
             />
           </main>
 

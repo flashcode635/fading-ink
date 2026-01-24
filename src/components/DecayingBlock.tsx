@@ -114,14 +114,14 @@ export const DecayingBlock = memo(function DecayingBlock({
           onFocus={handleFocus}
           onBlur={handleBlur}
           data-placeholder="Begin writing here..."
-          className={`content-editable text-decaying text-lg leading-relaxed 
-                     ${block.decayLevel > 50 ? 'text-corrupted' : ''}
-                     ${isCritical ? 'border-2 border-destructive/30 rounded' : ''}`}
+          className={`content-editable text-decaying leading-relaxed 
+                     ${block.decayLevel > 60 ? 'text-corrupted' : ''}
+                     ${isCritical ? 'border-2 border-destructive/20 rounded bg-destructive/5' : ''}`}
           style={{
             opacity: isFocused ? 1 : opacity,
-            filter: isFocused ? 'none' : `blur(${blur}px)`,
-            color: isFocused ? 'hsl(36, 30%, 13%)' : textColor,
-            transition: 'all 0.3s ease',
+            filter: isFocused ? 'none' : blur > 0 ? `blur(${blur}px)` : 'none',
+            color: isFocused ? 'hsl(32, 35%, 12%)' : textColor,
+            transition: 'all 0.4s ease',
           }}
         />
 

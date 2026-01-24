@@ -31,16 +31,24 @@ export interface Bruise {
   rotation: number;
 }
 
+export interface DocumentPage {
+  id: string;
+  pageNumber: number;
+  blocks: TextBlock[];
+  bruises: Bruise[];
+  backgroundYellowing: number;
+  createdAt: number;
+}
+
 export interface DocumentState {
   id: string;
   title: string;
-  blocks: TextBlock[];
+  pages: DocumentPage[];
+  currentPageIndex: number;
   totalEdits: number;
   documentAge: number; // milliseconds since creation
   createdAt: number;
   globalDecayMultiplier: number;
-  backgroundYellowing: number; // 0-100
-  bruises: Bruise[];
   lastSavedAt: number;
   hasSeenWelcome: boolean;
 }
@@ -87,7 +95,8 @@ export const DECAY_CONFIG = {
   RESTORATION_BONUS_SECONDS: 5,
   FAILED_RESTORATION_PENALTY_MIN: 5,
   FAILED_RESTORATION_PENALTY_MAX: 10,
-  MAX_OPACITY_REDUCTION: 0.007, // per decay level
-  BLUR_THRESHOLD: 60, // decay level where blur starts
-  BLUR_DIVISOR: 20, // controls blur intensity
+  MIN_OPACITY: 0.45, // Text never goes below 45% opacity
+  MAX_OPACITY_REDUCTION: 0.0055, // per decay level (adjusted for min opacity)
+  BLUR_THRESHOLD: 70, // decay level where blur starts
+  BLUR_MAX: 1.5, // maximum blur in pixels
 };
