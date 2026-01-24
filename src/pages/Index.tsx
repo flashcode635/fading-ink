@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useDocumentState } from '@/hooks/useDocumentState';
 import { WelcomeScreen } from '@/components/WelcomeScreen';
@@ -21,10 +22,12 @@ const Index = () => {
     resetDocument,
   } = useDocumentState();
 
-  // Start restoration when critical block is detected
-  if (criticalBlock && !criticalBlock.isBeingRestored) {
-    startRestoration(criticalBlock.id);
-  }
+  // Start restoration when critical block is detected - must be in useEffect
+  useEffect(() => {
+    if (criticalBlock && !criticalBlock.isBeingRestored) {
+      startRestoration(criticalBlock.id);
+    }
+  }, [criticalBlock, startRestoration]);
 
   return (
     <div className="min-h-screen bg-background">
