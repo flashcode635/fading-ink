@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCcw, Download, ChevronLeft, ChevronRight, FilePlus } from 'lucide-react';
+import { Plus, RotateCcw, Download, ChevronLeft, ChevronRight, FilePlus, FileText } from 'lucide-react';
 import { DocumentPage } from '@/types/document';
-import { DecayingBlock } from './DecayingBlock';
+import { PageContent } from './PageContent';
 import { BackgroundAging } from './BackgroundAging';
 import { DecayParticles } from './DecayParticles';
 import { downloadDocument } from '@/lib/decay';
+import { exportToPDF } from '@/lib/pdfExport';
 
 interface EditorCanvasProps {
   title: string;
@@ -41,7 +42,9 @@ export function EditorCanvas({
   createdAt,
 }: EditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const [titleValue, setTitleValue] = useState(title);
+  const [isExporting, setIsExporting] = useState(false);
 
   const averageDecay = currentPage.blocks.reduce((sum, b) => sum + b.decayLevel, 0) / currentPage.blocks.length;
 
@@ -50,96 +53,154 @@ export function EditorCanvas({
     onUpdateTitle(e.target.value);
   };
 
-  const handleDownload = () => {
+  const handleDownloadText = () => {
     downloadDocument(titleValue || 'Untitled Document', pages);
   };
 
-  // Page flip animation variants
+  const handleDownloadPDF = async () => {
+    if (!pageRef.current || isExporting) return;
+    setIsExporting(true);
+    try {
+      await exportToPDF(titleValue || 'Untitled Document', pages, pageRef.current);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // iOS-like smooth page flip animation with spring physics
   const pageVariants = {
     enter: (direction: 'left' | 'right') => ({
       rotateY: direction === 'right' ? 90 : -90,
+      x: direction === 'right' ? 100 : -100,
       opacity: 0,
-      scale: 0.95,
+      scale: 0.9,
+      filter: 'brightness(0.7)',
     }),
     center: {
       rotateY: 0,
+      x: 0,
       opacity: 1,
       scale: 1,
+      filter: 'brightness(1)',
     },
     exit: (direction: 'left' | 'right') => ({
       rotateY: direction === 'right' ? -90 : 90,
+      x: direction === 'right' ? -100 : 100,
       opacity: 0,
-      scale: 0.95,
+      scale: 0.9,
+      filter: 'brightness(0.7)',
     }),
   };
 
+  // iOS-like spring transition
+  const pageTransition = {
+    type: 'spring' as const,
+    stiffness: 300,
+    damping: 30,
+    mass: 1,
+  };
+
   return (
-    <div className="relative w-full max-w-[900px] mx-auto perspective-1200">
+    <div className="relative w-full max-w-[900px] mx-auto" style={{ perspective: '2000px' }}>
       {/* Page navigation controls */}
       <div className="flex items-center justify-center gap-4 mb-6">
-        <button
+        <motion.button
           onClick={() => onGoToPage(currentPageIndex - 1)}
           disabled={currentPageIndex === 0}
-          className="p-2 rounded-full bg-card border border-border hover:bg-secondary 
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-all
-                     hover:scale-110 active:scale-95"
+          className="p-3 rounded-full bg-card/90 backdrop-blur-sm border border-border 
+                     hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed 
+                     transition-all shadow-lg"
+          whileHover={{ scale: 1.1, x: -3 }}
+          whileTap={{ scale: 0.95 }}
         >
           <ChevronLeft className="w-5 h-5" />
-        </button>
+        </motion.button>
         
-        <div className="flex items-center gap-2 px-4 py-2 bg-card/80 rounded-full border border-border">
-          <span className="stats-panel text-sm">
-            Page {currentPageIndex + 1} of {pages.length}
+        <motion.div 
+          className="flex items-center gap-3 px-5 py-2.5 bg-card/90 backdrop-blur-sm 
+                     rounded-full border border-border shadow-lg"
+          layout
+        >
+          {/* Page dots indicator */}
+          <div className="flex items-center gap-1.5">
+            {pages.map((_, index) => (
+              <motion.button
+                key={index}
+                onClick={() => onGoToPage(index)}
+                className={`rounded-full transition-all ${
+                  index === currentPageIndex 
+                    ? 'w-6 h-2 bg-primary' 
+                    : 'w-2 h-2 bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                }`}
+                whileHover={{ scale: 1.2 }}
+                whileTap={{ scale: 0.9 }}
+                layout
+              />
+            ))}
+          </div>
+          <span className="text-sm stats-panel text-muted-foreground">
+            {currentPageIndex + 1} / {pages.length}
           </span>
-        </div>
+        </motion.div>
         
-        <button
+        <motion.button
           onClick={() => onGoToPage(currentPageIndex + 1)}
           disabled={currentPageIndex === pages.length - 1}
-          className="p-2 rounded-full bg-card border border-border hover:bg-secondary 
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-all
-                     hover:scale-110 active:scale-95"
+          className="p-3 rounded-full bg-card/90 backdrop-blur-sm border border-border 
+                     hover:bg-secondary disabled:opacity-30 disabled:cursor-not-allowed 
+                     transition-all shadow-lg"
+          whileHover={{ scale: 1.1, x: 3 }}
+          whileTap={{ scale: 0.95 }}
         >
           <ChevronRight className="w-5 h-5" />
-        </button>
+        </motion.button>
 
-        <button
+        <motion.button
           onClick={onAddNewPage}
-          className="p-2 rounded-full bg-accent/10 border border-accent/30 
-                     hover:bg-accent/20 transition-all hover:scale-110 active:scale-95
-                     text-accent"
+          className="p-3 rounded-full bg-primary/10 border border-primary/30 
+                     hover:bg-primary/20 transition-all text-primary shadow-lg"
+          whileHover={{ scale: 1.1, rotate: 5 }}
+          whileTap={{ scale: 0.95 }}
           title="Add new page"
         >
           <FilePlus className="w-5 h-5" />
-        </button>
+        </motion.button>
       </div>
 
-      {/* Main paper container with page flip */}
-      <div className="page-flip-container" style={{ perspective: '1200px' }}>
+      {/* Main paper container with iOS-like page flip */}
+      <div 
+        ref={containerRef}
+        className="page-flip-container relative"
+        style={{ 
+          transformStyle: 'preserve-3d',
+          perspectiveOrigin: 'center center',
+        }}
+      >
         <AnimatePresence mode="wait" custom={flipDirection}>
           <motion.div
             key={currentPage.id}
-            ref={containerRef}
+            ref={pageRef}
             custom={flipDirection}
             variants={pageVariants}
             initial="enter"
             animate="center"
             exit="exit"
-            transition={{
-              duration: 0.6,
-              ease: [0.43, 0.13, 0.23, 0.96],
-            }}
+            transition={pageTransition}
             className="document-paper paper-texture corner-fold page-depth torn-edge-bottom
                        relative min-h-[600px] md:min-h-[750px] p-6 md:p-10"
             style={{
               transformStyle: 'preserve-3d',
               transformOrigin: flipDirection === 'right' ? 'left center' : 'right center',
+              backfaceVisibility: 'hidden',
             }}
           >
             {/* Background aging effects */}
             <BackgroundAging 
               yellowing={currentPage.backgroundYellowing} 
-              bruises={currentPage.bruises} 
+              bruises={currentPage.bruises}
+              pageDecay={averageDecay}
             />
 
             {/* Decay particles */}
@@ -165,31 +226,27 @@ export function EditorCanvas({
                 </p>
               </div>
 
-              {/* Text blocks */}
-              <AnimatePresence mode="popLayout">
-                {!isFlipping && currentPage.blocks.map((block) => (
-                  <DecayingBlock
-                    key={block.id}
-                    block={block}
-                    onEdit={(content) => onEditBlock(block.id, content)}
-                    onDelete={() => onDeleteBlock(block.id)}
-                    isOnly={currentPage.blocks.length === 1}
-                  />
-                ))}
-              </AnimatePresence>
+              {/* Page content with Slate editor */}
+              {!isFlipping && (
+                <PageContent
+                  page={currentPage}
+                  onEditBlock={onEditBlock}
+                  onDeleteBlock={onDeleteBlock}
+                />
+              )}
 
               {/* Add new section button */}
               <motion.button
                 onClick={onAddBlock}
                 disabled={isFlipping}
                 className="w-full mt-6 py-4 border-2 border-dashed border-border/50 
-                           rounded-sm text-muted-foreground hover:border-foreground/30 
-                           hover:text-foreground transition-all flex items-center 
-                           justify-center gap-2 group"
-                whileHover={{ scale: 1.01 }}
+                           rounded-lg text-muted-foreground hover:border-primary/40 
+                           hover:text-foreground hover:bg-primary/5 transition-all 
+                           flex items-center justify-center gap-2 group"
+                whileHover={{ scale: 1.01, borderColor: 'hsl(var(--primary) / 0.4)' }}
                 whileTap={{ scale: 0.99 }}
               >
-                <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform" />
+                <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
                 <span className="text-sm stats-panel">Add New Section</span>
               </motion.button>
             </div>
@@ -200,35 +257,59 @@ export function EditorCanvas({
               — {currentPageIndex + 1} —
             </div>
 
-            {/* Page curl shadow effect */}
+            {/* Page curl effect */}
             <div 
-              className="absolute bottom-0 right-0 w-12 h-12 pointer-events-none"
+              className="absolute bottom-0 right-0 w-16 h-16 pointer-events-none corner-curl"
               style={{
-                background: 'linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.03) 50%)',
+                background: 'linear-gradient(135deg, transparent 45%, rgba(0,0,0,0.03) 45%, rgba(0,0,0,0.08) 100%)',
+                borderRadius: '0 0 4px 0',
               }}
             />
           </motion.div>
         </AnimatePresence>
+
+        {/* Page shadow underneath */}
+        <div 
+          className="absolute inset-0 -z-10 rounded-sm"
+          style={{
+            background: 'linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.1) 100%)',
+            transform: 'translateY(8px) scaleX(0.95)',
+            filter: 'blur(8px)',
+          }}
+        />
       </div>
 
       {/* Bottom action buttons */}
       <div className="fixed bottom-4 right-4 flex gap-2">
         <motion.button
-          onClick={handleDownload}
-          className="p-3 bg-card border border-border rounded-full
-                     shadow-lg hover:shadow-xl transition-shadow text-muted-foreground
+          onClick={handleDownloadText}
+          className="p-3 bg-card/90 backdrop-blur-sm border border-border rounded-full
+                     shadow-lg hover:shadow-xl transition-all text-muted-foreground
                      hover:text-foreground"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
-          title="Download document"
+          title="Download as text"
         >
           <Download className="w-5 h-5" />
+        </motion.button>
+
+        <motion.button
+          onClick={handleDownloadPDF}
+          disabled={isExporting}
+          className="p-3 bg-primary/10 border border-primary/30 rounded-full
+                     shadow-lg hover:shadow-xl transition-all text-primary
+                     hover:bg-primary/20 disabled:opacity-50"
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          title="Export as PDF"
+        >
+          <FileText className="w-5 h-5" />
         </motion.button>
         
         <motion.button
           onClick={onReset}
-          className="p-3 bg-card border border-border rounded-full
-                     shadow-lg hover:shadow-xl transition-shadow text-muted-foreground
+          className="p-3 bg-card/90 backdrop-blur-sm border border-border rounded-full
+                     shadow-lg hover:shadow-xl transition-all text-muted-foreground
                      hover:text-destructive"
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
