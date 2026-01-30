@@ -88,7 +88,7 @@ export const DECAY_CONFIG = {
   EDIT_ACCELERATION: 4, // decay added to other blocks when one is edited
   YELLOWING_INCREMENT: 0.5, // background yellowing per edit
   DECAY_INTERVAL: 2000, // ms between decay calculations
-  SAVE_INTERVAL: 5000, // ms between localStorage saves
+  SAVE_INTERVAL: 5000, // ms between database saves
   CRITICAL_THRESHOLD: 85, // decay level that triggers mini-game
   RESTORATION_TIME: 30, // seconds for mini-game
   RESTORATION_ACCURACY_THRESHOLD: 0.8, // 80% match required
