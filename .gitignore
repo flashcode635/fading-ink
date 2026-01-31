@@ -31,11 +31,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Next.js
-/.next
+.next
 
 # GitHub
 /.github
 
-# Prisma
-/src/generated/prisma
+
