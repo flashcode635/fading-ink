@@ -1,3 +1,5 @@
+'use client';
+
 import { useCallback, useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import { createEditor, Descendant, Editor, Transforms, Element as SlateElement, BaseEditor } from 'slate';
 import { Slate, Editable, withReact, ReactEditor, RenderLeafProps, RenderElementProps } from 'slate-react';

@@ -1,3 +1,5 @@
+'use client';
+
 import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bruise } from '@/types/document';

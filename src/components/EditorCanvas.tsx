@@ -1,6 +1,8 @@
+'use client';
+
 import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RotateCcw, Download, ChevronLeft, ChevronRight, FilePlus, FileText } from 'lucide-react';
+import { Plus, RotateCcw, Download, ChevronLeft, ChevronRight, FilePlus, FileText, FolderOpen } from 'lucide-react';
 import { DocumentPage } from '@/types/document';
 import { PageContent } from './PageContent';
 import { BackgroundAging } from './BackgroundAging';
@@ -23,6 +25,7 @@ interface EditorCanvasProps {
   onUpdateTitle: (title: string) => void;
   onReset: () => void;
   createdAt: number;
+  onBackToList?: () => void;
 }
 
 export function EditorCanvas({
@@ -40,6 +43,7 @@ export function EditorCanvas({
   onUpdateTitle,
   onReset,
   createdAt,
+  onBackToList,
 }: EditorCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -279,8 +283,21 @@ export function EditorCanvas({
         />
       </div>
 
-      {/* Bottom action buttons */}
       <div className="fixed bottom-4 right-4 flex gap-2">
+        {onBackToList && (
+          <motion.button
+            onClick={onBackToList}
+            className="p-3 bg-card/90 backdrop-blur-sm border border-border rounded-full
+                       shadow-lg hover:shadow-xl transition-all text-muted-foreground
+                       hover:text-foreground"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title="Back to documents"
+          >
+            <FolderOpen className="w-5 h-5" />
+          </motion.button>
+        )}
+
         <motion.button
           onClick={handleDownloadText}
           className="p-3 bg-card/90 backdrop-blur-sm border border-border rounded-full

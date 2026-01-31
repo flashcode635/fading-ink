@@ -1,3 +1,5 @@
+'use client';
+
 import { memo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Trash2 } from 'lucide-react';

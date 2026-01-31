@@ -8,8 +8,13 @@ import {
   generateRandomBruise,
   generateRandomStain 
 } from '@/lib/decay';
+import {
+  getDocument,
+  saveDocument as saveDocumentToDb,
+  createSnapshot,
+} from '@/lib/actions';
 
-const STORAGE_KEY = 'aging-document-state-v2';
+const AUTO_SAVE_INTERVAL = 5000; // 5 seconds
 
 function createInitialState(): DocumentState {
   const now = Date.now();
@@ -27,41 +32,185 @@ function createInitialState(): DocumentState {
   };
 }
 
-function loadState(): DocumentState {
+async function loadStateFromDb(documentId?: string | null): Promise<DocumentState | null> {
+  if (!documentId) return null;
+  
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // Update document age based on time since last save
-      parsed.documentAge += Date.now() - parsed.lastSavedAt;
-      return parsed;
+    const doc = await getDocument(documentId);
+    if (doc) {
+      // Reconstruct DocumentState from database document
+      const content = doc.content;
+      return {
+        ...content,
+        id: doc.id,
+        title: doc.title,
+        documentAge: doc.documentAge + (Date.now() - new Date(doc.lastSavedAt).getTime()),
+        hasSeenWelcome: true,
+      };
     }
   } catch (e) {
-    console.error('Failed to load document state:', e);
+    console.error('Failed to load document from database:', e);
   }
-  return createInitialState();
+  return null;
 }
 
-export function useDocumentState() {
-  const [state, setState] = useState<DocumentState>(loadState);
+interface UseDocumentStateOptions {
+  userId?: string | null;
+  documentId?: string | null;
+  onSaveDialogOpen?: () => void;
+}
+
+export function useDocumentState(options: UseDocumentStateOptions = {}) {
+  const { userId, documentId, onSaveDialogOpen } = options;
+  const [state, setState] = useState<DocumentState>(() => createInitialState());
+  const [isLoadingDocument, setIsLoadingDocument] = useState(!!documentId);
   const [criticalBlock, setCriticalBlock] = useState<TextBlock | null>(null);
   const [isFlipping, setIsFlipping] = useState(false);
   const [flipDirection, setFlipDirection] = useState<'left' | 'right'>('right');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const decayIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSnapshotRef = useRef<number>(Date.now());
+
+  // Load document from database on mount
+  useEffect(() => {
+    if (documentId) {
+      setIsLoadingDocument(true);
+      loadStateFromDb(documentId)
+        .then((loadedState) => {
+          if (loadedState) {
+            setState(loadedState);
+          }
+        })
+        .finally(() => setIsLoadingDocument(false));
+    }
+  }, [documentId]);
 
   const currentPage = state.pages[state.currentPageIndex];
+  
+  // Calculate average decay level
+  const calculateAverageDecay = useCallback((docState: DocumentState) => {
+    const allBlocks = docState.pages.flatMap(p => p.blocks);
+    if (allBlocks.length === 0) return 0;
+    return allBlocks.reduce((sum, b) => sum + b.decayLevel, 0) / allBlocks.length;
+  }, []);
 
-  // Debounced save to localStorage
+  // Debounced save to database
   const saveState = useCallback((newState: DocumentState) => {
+    if (!userId) return;
+    
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
-    saveTimeoutRef.current = setTimeout(() => {
+    saveTimeoutRef.current = setTimeout(async () => {
       const stateToSave = { ...newState, lastSavedAt: Date.now() };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+      const currentDecay = calculateAverageDecay(stateToSave);
+      
+      try {
+        await saveDocumentToDb(userId, stateToSave.id, stateToSave.title, stateToSave, {
+          currentDecayLevel: currentDecay,
+          globalDecayMultiplier: stateToSave.globalDecayMultiplier,
+          documentAge: stateToSave.documentAge,
+          totalEdits: stateToSave.totalEdits,
+          currentPageIndex: stateToSave.currentPageIndex,
+        });
+      } catch (e) {
+        console.error('Failed to save document:', e);
+      }
     }, DECAY_CONFIG.SAVE_INTERVAL);
-  }, []);
+  }, [userId, calculateAverageDecay]);
+
+  // Auto-save snapshot every 5 seconds (for DB persistence)
+  useEffect(() => {
+    if (!userId) return;
+    
+    autoSaveIntervalRef.current = setInterval(async () => {
+      const now = Date.now();
+      const timeSinceLastSnapshot = now - lastSnapshotRef.current;
+      
+      if (timeSinceLastSnapshot >= AUTO_SAVE_INTERVAL) {
+        const currentDecay = calculateAverageDecay(state);
+        const stateToSave = { ...state, lastSavedAt: now };
+        
+        try {
+          // Save document to database
+          await saveDocumentToDb(userId, stateToSave.id, stateToSave.title, stateToSave, {
+            currentDecayLevel: currentDecay,
+            globalDecayMultiplier: stateToSave.globalDecayMultiplier,
+            documentAge: stateToSave.documentAge,
+            totalEdits: stateToSave.totalEdits,
+            currentPageIndex: stateToSave.currentPageIndex,
+          });
+          
+          // Create snapshot
+          await createSnapshot(state.id, stateToSave, currentDecay, state.documentAge);
+          
+          lastSnapshotRef.current = now;
+          console.log('Auto-saved snapshot at decay level:', currentDecay.toFixed(2));
+        } catch (e) {
+          console.error('Failed to auto-save:', e);
+        }
+      }
+    }, AUTO_SAVE_INTERVAL);
+
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+      }
+    };
+  }, [userId, state, calculateAverageDecay]);
+
+  // Handle Ctrl+S keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (onSaveDialogOpen) {
+          onSaveDialogOpen();
+        } else {
+          setShowSaveDialog(true);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSaveDialogOpen]);
+
+  // Save document with title
+  const saveDocument = useCallback(async (title: string) => {
+    if (!userId) return;
+    
+    setIsSaving(true);
+    
+    const currentDecay = calculateAverageDecay(state);
+    const now = Date.now();
+    const newState = { 
+      ...state, 
+      title, 
+      lastSavedAt: now 
+    };
+    
+    setState(newState);
+    
+    // Save to database
+    try {
+      await saveDocumentToDb(userId, newState.id, title, newState, {
+        currentDecayLevel: currentDecay,
+        globalDecayMultiplier: newState.globalDecayMultiplier,
+        documentAge: newState.documentAge,
+        totalEdits: newState.totalEdits,
+        currentPageIndex: newState.currentPageIndex,
+      });
+    } catch (e) {
+      console.error('Failed to save document:', e);
+    }
+    
+    setIsSaving(false);
+    setShowSaveDialog(false);
+  }, [userId, state, calculateAverageDecay]);
 
   // Decay calculation loop
   useEffect(() => {
@@ -374,7 +523,21 @@ export function useDocumentState() {
 
   // Reset document
   const resetDocument = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    const newState = createInitialState();
+    newState.hasSeenWelcome = true;
+    setState(newState);
+  }, []);
+
+  // Load a specific document from database
+  const loadDocument = useCallback(async (docId: string) => {
+    const loadedState = await loadStateFromDb(docId);
+    if (loadedState) {
+      setState(loadedState);
+    }
+  }, []);
+
+  // Create new document
+  const createNewDocument = useCallback(() => {
     const newState = createInitialState();
     newState.hasSeenWelcome = true;
     setState(newState);
@@ -401,6 +564,10 @@ export function useDocumentState() {
     criticalBlock,
     isFlipping,
     flipDirection,
+    showSaveDialog,
+    setShowSaveDialog,
+    isSaving,
+    isLoadingDocument,
     editBlock,
     addBlock,
     deleteBlock,
@@ -413,5 +580,8 @@ export function useDocumentState() {
     dismissRestoration,
     markWelcomeSeen,
     resetDocument,
+    saveDocument,
+    loadDocument,
+    createNewDocument,
   };
 }

@@ -1,3 +1,5 @@
+'use client';
+
 import { motion } from 'framer-motion';
 import { Clock, Edit3, AlertTriangle, Skull, Sparkles } from 'lucide-react';
 

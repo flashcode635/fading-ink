@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DecayParticle } from '@/types/document';

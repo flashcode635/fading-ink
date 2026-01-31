@@ -1,3 +1,5 @@
+'use client';
+
 import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { FileText, Percent, Clock, AlertTriangle, Edit3, BookOpen } from 'lucide-react';
