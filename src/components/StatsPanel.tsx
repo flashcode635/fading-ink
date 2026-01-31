@@ -6,7 +6,7 @@ import { FileText, Percent, Clock, AlertTriangle, Edit3, BookOpen } from 'lucide
 import { formatAge } from '@/lib/decay';
 
 interface StatsPanelProps {
-  totalSections: number;
+  totalSections?: number;
   averageDecay: number;
   criticalSections: number;
   documentAge: number;
@@ -16,7 +16,7 @@ interface StatsPanelProps {
 }
 
 export const StatsPanel = memo(function StatsPanel({
-  totalSections,
+  // totalSections,
   averageDecay,
   criticalSections,
   documentAge,
@@ -30,11 +30,11 @@ export const StatsPanel = memo(function StatsPanel({
       label: 'Pages',
       value: `${currentPage}/${totalPages}`,
     },
-    {
-      icon: FileText,
-      label: 'Sections',
-      value: totalSections,
-    },
+    // {
+    //   icon: FileText,
+    //   label: 'Sections',
+    //   value: totalSections,
+    // },
     {
       icon: Percent,
       label: 'Avg Decay',

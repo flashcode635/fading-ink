@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   // Enable experimental features for better performance
   experimental: {
     // Optimize package imports

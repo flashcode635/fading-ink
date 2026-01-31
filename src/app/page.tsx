@@ -131,7 +131,7 @@ export default function HomePage() {
         <>
           {/* Stats Panel */}
           <StatsPanel
-            totalSections={stats.totalSections}
+            // totalSections={stats.totalSections}
             averageDecay={stats.averageDecay}
             criticalSections={stats.criticalSections}
             documentAge={stats.documentAge}

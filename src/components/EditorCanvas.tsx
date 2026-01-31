@@ -240,7 +240,7 @@ export function EditorCanvas({
               )}
 
               {/* Add new section button */}
-              <motion.button
+              {/* <motion.button
                 onClick={onAddBlock}
                 disabled={isFlipping}
                 className="w-full mt-6 py-4 border-2 border-dashed border-border/50 
@@ -252,7 +252,7 @@ export function EditorCanvas({
               >
                 <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
                 <span className="text-sm stats-panel">Add New Section</span>
-              </motion.button>
+              </motion.button> */}
             </div>
 
             {/* Page number */}
